@@ -7,3 +7,11 @@ class UserRequest(BaseModel):
 
 class SparqlResponse(BaseModel):
     sparql: str = Field(..., description="Generated SPARQL query")
+
+
+class SparqlRequest(BaseModel):
+    sparql: str = Field(..., description="SPARQL query to execute")
+
+
+class ResultsResponse(BaseModel):
+    table: str = Field(..., description="Markdown table of query results")
