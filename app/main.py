@@ -1,8 +1,17 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import ResultsResponse, SparqlRequest, SparqlResponse, UserRequest
 
 app = FastAPI(title="Conversational Knowledge Graph Backend")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 SPARQL_QUERY = """\
 PREFIX dblp: <https://dblp.org/rdf/schema#>
