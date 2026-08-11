@@ -6,5 +6,5 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    type: str = Field(..., description="Response type: 'sparql' or 'table'")
+    type: str = Field(..., description="Response type: 'sparql', 'table', or 'error'")
     content: str = Field(..., description="Response content")
