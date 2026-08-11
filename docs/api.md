@@ -22,7 +22,10 @@ Health check endpoint.
 
 ### `POST /chat`
 
-Single endpoint that handles both natural language requests and SPARQL queries. The system detects the input type, generates SPARQL if needed, executes it against the DBLP endpoint, and returns results as a markdown table.
+Single endpoint that handles both natural language requests and SPARQL queries.
+
+- **Natural language input:** Returns a hardcoded SPARQL query (not executed).
+- **SPARQL input:** Executes against the DBLP endpoint and returns results as a markdown table.
 
 **Request** `POST /chat`:
 
@@ -36,7 +39,16 @@ Single endpoint that handles both natural language requests and SPARQL queries. 
 | --------- | ------ | -------- | ---------------------------------------------- |
 | `message` | string | Yes      | User message (natural language or SPARQL query) |
 
-**Response — Table** `200 OK`:
+**Response — SPARQL (natural language input)** `200 OK`:
+
+```json
+{
+  "type": "sparql",
+  "content": "PREFIX dblp: <https://dblp.org/rdf/schema#>\n\nSELECT ..."
+}
+```
+
+**Response — Table (SPARQL input)** `200 OK`:
 
 ```json
 {
@@ -56,8 +68,8 @@ Single endpoint that handles both natural language requests and SPARQL queries. 
 
 | Field     | Type   | Description                                              |
 | --------- | ------ | -------------------------------------------------------- |
-| `type`    | string | `"table"` for success, `"error"` for failure             |
-| `content` | string | Markdown table or error message                          |
+| `type`    | string | `"sparql"`, `"table"`, or `"error"`                      |
+| `content` | string | SPARQL query, markdown table, or error message           |
 
 **cURL — Natural Language:**
 
@@ -113,12 +125,11 @@ Returned in the response body when SPARQL execution fails:
 
 ```
 User → POST /chat → router.is_sparql(message)
-                     ├─ Yes → sparql → sparql_executor.execute(sparql)
-                     └─ No  → sparql_generator.execute(nl) → sparql_executor.execute(sparql)
-                                                            ↓
-                                              table_formatter.format(results)
-                                                            ↓
-                                                   {type: "table", content: "..."}
+                     ├─ Yes → sparql_executor.execute(sparql) → table_formatter.format(results)
+                     │                                                  ↓
+                     │                                      {type: "table", content: "..."}
+                     │
+                     └─ No  → sparql_generator.execute(nl) → {type: "sparql", content: "..."}
 ```
 
 | Agent              | Module                           | Responsibility                           |
@@ -134,8 +145,9 @@ User → POST /chat → router.is_sparql(message)
 
 1. **Single input:** Provide one text input for the user to type either natural language or SPARQL.
 2. **Response handling:** Check the `type` field in the response:
+   - `"sparql"` → display the SPARQL query in a code block. The user can edit and resubmit it.
    - `"table"` → parse and render the markdown table.
    - `"error"` → display the error message.
 3. **Table rendering:** The `content` field contains standard markdown. Use a markdown renderer or parse the pipe-delimited format into an HTML `<table>`.
-4. **Loading state:** The DBLP endpoint may take a few seconds. Show a loading indicator while waiting.
+4. **Loading state:** The DBLP endpoint may take a few seconds. Show a loading indicator when `type` is `"table"`.
 5. **Error handling:** Show the `content` field as an error message when `type` is `"error"`.
