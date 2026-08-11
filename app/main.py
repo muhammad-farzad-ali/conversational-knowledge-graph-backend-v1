@@ -18,17 +18,16 @@ app.add_middleware(
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
     if router.is_sparql(request.message):
-        sparql = request.message
+        results = sparql_executor.execute(request.message)
+
+        if "error" in results:
+            return ChatResponse(type="error", content=results["error"])
+
+        table = table_formatter.format(results)
+        return ChatResponse(type="table", content=table)
     else:
         sparql = sparql_generator.execute(request.message)
-
-    results = sparql_executor.execute(sparql)
-
-    if "error" in results:
-        return ChatResponse(type="error", content=results["error"])
-
-    table = table_formatter.format(results)
-    return ChatResponse(type="table", content=table)
+        return ChatResponse(type="sparql", content=sparql)
 
 
 @app.get("/health")
