@@ -22,7 +22,7 @@ Health check endpoint.
 
 ### `POST /chat`
 
-Single endpoint that handles both natural language requests and SPARQL queries. The system automatically detects the input type and routes to the appropriate agent.
+Single endpoint that handles both natural language requests and SPARQL queries. The system detects the input type, generates SPARQL if needed, executes it against the DBLP endpoint, and returns results as a markdown table.
 
 **Request** `POST /chat`:
 
@@ -36,32 +36,28 @@ Single endpoint that handles both natural language requests and SPARQL queries. 
 | --------- | ------ | -------- | ---------------------------------------------- |
 | `message` | string | Yes      | User message (natural language or SPARQL query) |
 
-**Response — Natural Language Input** `200 OK`:
-
-When the input is natural language, the system generates a SPARQL query:
-
-```json
-{
-  "type": "sparql",
-  "content": "PREFIX dblp: <https://dblp.org/rdf/schema#>\n\nSELECT\n  ?pubTitle\n  (COUNT(DISTINCT ?authorName) AS ?Authors)\n  (COUNT(DISTINCT ?venue) AS ?Venues)\n  (COUNT(DISTINCT ?year) AS ?Years)\nWHERE {\n  ?pub a dblp:Publication .\n  ?pub dblp:title ?pubTitle .\n  OPTIONAL {\n    ?pub dblp:authoredBy ?author .\n    ?author dblp:primaryCreatorName ?authorName .\n  }\n  OPTIONAL {\n    ?pub dblp:publishedIn ?venue .\n  }\n  OPTIONAL {\n    ?pub dblp:yearOfPublication ?year .\n  }\n}\nGROUP BY ?pubTitle\nORDER BY ASC(?pubTitle)"
-}
-```
-
-**Response — SPARQL Input** `200 OK`:
-
-When the input is a SPARQL query, the system returns results as a markdown table:
+**Response — Table** `200 OK`:
 
 ```json
 {
   "type": "table",
-  "content": "|  # | ?pubTitle                                            | ?Authors | ?Venues | ?Years |\n| -: | ---------------------------------------------------- | -------: | ------: | -----: |\n|  1 | ≪-separating domains, strong-compact spaces an[...]  |        1 |       1 |      1 |\n|  2 | Model identification control strategy for coupl[...] |        4 |       1 |      1 |\n|  3 | host device - Generic programming in Cud[...]        |        1 |       1 |      1 |\n|  4 | derivations: improvisation for tenor saxophone [...] |        1 |       1 |      1 |\n|  5 | Generalized Fuzzy Ideals of BCH-Algebra.             |        2 |       1 |      1 |\n|  6 | knowscape - a collective knowledge architecture[...] |        2 |       1 |      1 |\n|  7 | knowscape mobile at DIS2004, Cambridge.              |        4 |       1 |      1 |\n|  8 | knowscape mobile, associating territory of data[...] |        4 |       1 |      1 |\n|  9 | knowscape, a 3D multi-user experimental web bro[...] |        4 |       1 |      1 |"
+  "content": "|  # | ?pubTitle | ?Authors | ?Venues | ?Years |\n| -: | --- | --- | --- | --- |\n|  1 | Example Publication | 2 | 1 | 2024 |"
 }
 ```
 
-| Field     | Type   | Description                                |
-| --------- | ------ | ------------------------------------------ |
-| `type`    | string | `"sparql"` or `"table"`                    |
-| `content` | string | SPARQL query string or markdown table      |
+**Response — Error** `200 OK`:
+
+```json
+{
+  "type": "error",
+  "content": "SPARQL query timed out"
+}
+```
+
+| Field     | Type   | Description                                              |
+| --------- | ------ | -------------------------------------------------------- |
+| `type`    | string | `"table"` for success, `"error"` for failure             |
+| `content` | string | Markdown table or error message                          |
 
 **cURL — Natural Language:**
 
@@ -76,7 +72,7 @@ curl -X POST http://127.0.0.1:8000/chat \
 ```bash
 curl -X POST http://127.0.0.1:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "PREFIX dblp: <https://dblp.org/rdf/schema#> SELECT ?pubTitle WHERE { ?pub dblp:title ?pubTitle }"}'
+  -d '{"message": "PREFIX dblp: <https://dblp.org/rdf/schema#> SELECT ?pubTitle WHERE { ?pub dblp:title ?pubTitle } LIMIT 10"}'
 ```
 
 ---
@@ -101,21 +97,36 @@ Returned when request body fails validation.
 }
 ```
 
+### Application Errors
+
+Returned in the response body when SPARQL execution fails:
+
+| Error Message | Cause |
+| ------------- | ----- |
+| `SPARQL query timed out` | Query took longer than 30 seconds |
+| `SPARQL endpoint returned {status_code}` | DBLP endpoint returned an error |
+| `Failed to parse SPARQL results: {error}` | Unexpected response format |
+
 ---
 
 ## Architecture
 
 ```
 User → POST /chat → router.is_sparql(message)
-                     ├─ Yes → table_formatter.execute(sparql) → {type: "table", content: "..."}
-                     └─ No  → sparql_generator.execute(nl)    → {type: "sparql", content: "..."}
+                     ├─ Yes → sparql → sparql_executor.execute(sparql)
+                     └─ No  → sparql_generator.execute(nl) → sparql_executor.execute(sparql)
+                                                            ↓
+                                              table_formatter.format(results)
+                                                            ↓
+                                                   {type: "table", content: "..."}
 ```
 
-| Agent              | Module                          | Responsibility                     |
-| ------------------ | ------------------------------- | ---------------------------------- |
-| Router             | `app/agents/router.py`          | Detects if input is SPARQL or NL   |
-| SPARQL Generator   | `app/agents/sparql_generator.py`| Generates SPARQL from NL request   |
-| Table Formatter    | `app/agents/table_formatter.py` | Formats SPARQL results as table    |
+| Agent              | Module                           | Responsibility                           |
+| ------------------ | -------------------------------- | ---------------------------------------- |
+| Router             | `app/agents/router.py`           | Detects if input is SPARQL or NL         |
+| SPARQL Generator   | `app/agents/sparql_generator.py` | Generates SPARQL from NL request         |
+| SPARQL Executor    | `app/agents/sparql_executor.py`  | Executes SPARQL against DBLP endpoint    |
+| Table Formatter    | `app/agents/table_formatter.py`  | Converts SPARQL JSON results to table    |
 
 ---
 
@@ -123,7 +134,8 @@ User → POST /chat → router.is_sparql(message)
 
 1. **Single input:** Provide one text input for the user to type either natural language or SPARQL.
 2. **Response handling:** Check the `type` field in the response:
-   - `"sparql"` → display the SPARQL query in a code block.
    - `"table"` → parse and render the markdown table.
+   - `"error"` → display the error message.
 3. **Table rendering:** The `content` field contains standard markdown. Use a markdown renderer or parse the pipe-delimited format into an HTML `<table>`.
-4. **Error handling:** Show validation errors from the `detail` array when the backend returns 422.
+4. **Loading state:** The DBLP endpoint may take a few seconds. Show a loading indicator while waiting.
+5. **Error handling:** Show the `content` field as an error message when `type` is `"error"`.
