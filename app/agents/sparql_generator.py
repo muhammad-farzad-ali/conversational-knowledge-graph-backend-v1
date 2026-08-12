@@ -24,7 +24,8 @@ WHERE {
   }
 }
 GROUP BY ?pubTitle
-ORDER BY ASC(?pubTitle)\
+ORDER BY ASC(?pubTitle) 
+LIMIT 10\
 """
 
 
