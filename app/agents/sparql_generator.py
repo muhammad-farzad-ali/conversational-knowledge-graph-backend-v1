@@ -1,33 +1,17 @@
-SPARQL_QUERY = """\
-PREFIX dblp: <https://dblp.org/rdf/schema#>
+import os
 
-SELECT
-  ?pubTitle
-  (COUNT(DISTINCT ?authorName) AS ?Authors)
-  (COUNT(DISTINCT ?venue) AS ?Venues)
-  (COUNT(DISTINCT ?year) AS ?Years)
-WHERE {
-  ?pub a dblp:Publication .
-  ?pub dblp:title ?pubTitle .
+import httpx
 
-  OPTIONAL {
-    ?pub dblp:authoredBy ?author .
-    ?author dblp:primaryCreatorName ?authorName .
-  }
-
-  OPTIONAL {
-    ?pub dblp:publishedIn ?venue .
-  }
-
-  OPTIONAL {
-    ?pub dblp:yearOfPublication ?year .
-  }
-}
-GROUP BY ?pubTitle
-ORDER BY ASC(?pubTitle) 
-LIMIT 10\
-"""
+TEXT2SPARQL_API_URL = os.environ.get("TEXT2SPARQL_API_URL", "http://localhost:8000")
+TIMEOUT_SECONDS = 30
 
 
 def execute(request: str) -> str:
-    return SPARQL_QUERY
+    response = httpx.post(
+        f"{TEXT2SPARQL_API_URL}/api/v1/query",
+        json={"question": request, "execute": False},
+        timeout=TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["sparql"]
