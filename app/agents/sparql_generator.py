@@ -2,7 +2,7 @@ import os
 
 import httpx
 
-TEXT2SPARQL_API_URL = os.environ.get("TEXT2SPARQL_API_URL", "http://localhost:8000")
+TEXT2SPARQL_API_URL = os.environ.get("TEXT2SPARQL_API_URL", "http://localhost:8080")
 TIMEOUT_SECONDS = 30
 
 
